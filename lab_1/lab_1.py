@@ -14,6 +14,46 @@ URL — this one points to the instructor's copy of the data, not
 yours.
 """
 
+# %% Environment setup -- run once, in Positron's terminal (not as Python)
+#
+# This lab is the first time we need a dedicated Python environment for
+# this course. An environment is an isolated set of installed packages --
+# keeping this course's packages separate from anything else on your
+# machine means a package version conflict in one project can't silently
+# break another.
+#
+# The commands below are terminal commands, not Python code -- they will
+# not run as part of this script. Open Positron's terminal panel (not the
+# Python console) and run them there, once, before running anything else.
+#
+# 1. Create the environment (only needed the first time):
+#
+#      conda create -n econ5371 python=3.11
+#
+# 2. Activate it (needed every time you start a new terminal session):
+#
+#      conda activate econ5371
+#
+# 3. Install this lab's required packages into the now-active environment:
+#
+#      pip install -r requirements.txt
+#
+# 4. Confirm it worked:
+#
+#      python -c "import pandas, statsmodels, pmdarima; print('all good')"
+#
+# From this lab forward, always confirm your terminal shows
+# "(econ5371)" at the start of the prompt before running any lab script.
+# If you open a new terminal window, you'll need to run step 2 again --
+# activation does not persist across terminal sessions.
+#
+# Also confirm Positron itself is pointed at this same environment for
+# running code (not just the terminal): use the interpreter selector,
+# usually in the bottom status bar or via the command palette
+# ("Python: Select Interpreter"), and choose econ5371 there too.
+
+
+# %%
 import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.stattools import adfuller, kpss
@@ -30,6 +70,7 @@ import pmdarima as pm
 tab10 = plt.get_cmap("tab10")
 COLOR_OBSERVED = tab10(0)  # blue
 
+# %%
 # =============================================================================
 # 1. Load the data from GitHub
 # =============================================================================
@@ -48,7 +89,7 @@ df.index.freq = "QS"  # explicitly quarterly-start; avoids statsmodels having
 
 print(df.head())
 
-
+# %%
 # =============================================================================
 # 2. Plot the raw series
 # =============================================================================
@@ -61,7 +102,7 @@ ax.set_xlim(df.index.min(), df.index.max())
 fig.tight_layout()
 plt.show()
 
-
+# %%
 # =============================================================================
 # 3. Unit root testing on the level series
 # =============================================================================
@@ -87,7 +128,7 @@ print(f"  p-value   = {kpss_level[1]:.4f}")
 #
 # Both tests agree: this is a genuine unit-root series, not a borderline case.
 
-
+# %%
 # =============================================================================
 # 4. Difference the series and re-test
 # =============================================================================
@@ -115,7 +156,7 @@ print(f"  KPSS: statistic = {kpss_diff[0]:.4f}, p-value = {kpss_diff[1]:.4f}")
 # p-value (e.g. "p >= 0.10") rather than an exact figure. Given how clearly
 # stationary this differenced series is, that's expected, not a problem.
 
-
+# %%
 # =============================================================================
 # 5. Plot the differenced series
 # =============================================================================
@@ -134,7 +175,7 @@ plt.show()
 # up-down pattern that remains is the seasonal signal, which the ACF/PACF
 # below will help us characterize precisely.
 
-
+# %%
 # =============================================================================
 # 6. ACF / PACF on the differenced series
 # =============================================================================
@@ -153,7 +194,7 @@ plt.show()
 # spike is the fingerprint of quarterly seasonality -- this series needs a
 # seasonal term, not just a plain ARMA.
 
-
+# %%
 # =============================================================================
 # 7. Fit a first candidate ARIMA (no seasonal term, for comparison)
 # =============================================================================
@@ -164,7 +205,7 @@ print(f"Candidate ARIMA(1,1,1) AIC: {candidate_fit.aic:.3f}")
 print(f"Candidate ARIMA(1,1,1) BIC: {candidate_fit.bic:.3f}")
 # Keep these numbers to compare against the seasonal specification below.
 
-
+# %%
 # =============================================================================
 # 8. Let auto_arima search over seasonal specifications
 # =============================================================================
@@ -184,7 +225,7 @@ print(auto_model.summary())
 # auto_arima selects SARIMA(1,0,1)(0,1,1)[4], AIC = 193.67 -- clearly better
 # than the non-seasonal ARIMA(1,1,1) candidate above.
 
-
+# %%
 # =============================================================================
 # 9. Fit the selected SARIMA model directly
 # =============================================================================
@@ -209,7 +250,7 @@ print(final_fit.summary())
 # Jarque-Bera as quick built-in checks. Section 10 below runs a fuller
 # Ljung-Box test over several lags and looks at the residuals directly.
 
-
+# %%
 # =============================================================================
 # 10. Residual diagnostics
 # =============================================================================
