@@ -11,35 +11,47 @@ Course-wide good practices used in this lab:
 Run this script section by section (recommended: in Positron, run cell
 by cell using the '# %%' markers), or top to bottom as a single script.
 """
-# %%
-# ============================================================================
-# Environment activation
-#
-# 1. Activate it (needed every time you start a new terminal session):
-#    conda activate econ5371
-#
-# 2. Install required packages/dependencies
-#    pip install -r requirements.txt
-#
-# ============================================================================
 
-# Step 1: Set up your path
+# %% Setup
+#
+# Step 1: Install the required packages.
+#
+# requirements.txt lists every package this lab needs. Before running
+# this script, open a terminal (or the Positron terminal panel), make
+# sure you're in this lab's folder, and run:
+#
+#     pip install -r requirements.txt
+#
+# This is a command-line instruction, not Python code -- it will not
+# run as part of this script. Run it once yourself in the terminal
+# (or again later if requirements.txt changes), then come back and
+# run this script.
+#
+# Installing does NOT make the packages usable yet -- it only puts
+# them on disk where Python can find them. We still need to import
+# each one by name below; Python has no way to "import everything
+# listed in a file" automatically.
 
+# Step 2: Set the lab folder location.
+#
 # Edit the path below to match where this lab's folder lives on your
-# own computer
-'''
-We use a fixed path here, rather than trying to detect it automatically,
-because automatic detection (e.g., via __file__) only works when running
-this file as a whole script -- it breaks when running cell-by-cell in an
-interactive console or notebook, which is a common way to work through a lab.
-'''
+# own computer. Do this once -- everything else in the script (loading
+# data, etc.) depends on this being correct.
+#
+# We use a fixed path here, rather than trying to detect it
+# automatically, because automatic detection (e.g., via __file__)
+# only works when running this file as a whole script -- it breaks
+# when running cell-by-cell in an interactive console or notebook,
+# which is a common way to work through a lab.
+
+
 LAB_FOLDER = r"\Users\ncachanosky\OneDrive\Research\GitHub\ECON-5371-lab\lab_2"
 
 import os
 
 os.chdir(LAB_FOLDER)
 
-# Step 2: Import the installed packages.
+# Step 3: Import the installed packages.
 
 import pandas as pd
 import numpy as np
@@ -47,8 +59,6 @@ import matplotlib.pyplot as plt
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-
-# Step 3: Other general settings
 
 # Reproducibility
 np.random.seed(42)
@@ -102,7 +112,10 @@ plt.show()
 
 # Discussion: Does this series look stationary? What features do you
 # see (trend? seasonality?) that we'll need to address before fitting
-# an ARIMA model?
+# an ARIMA model? In particular: does the series appear to drift
+# upward (or downward) over time on average, beyond just short-run
+# noise? Keep this in mind for Section 6 -- it matters for the
+# forecast, not just for the stationarity test.
 
 
 # %% 2. Test for Stationarity
@@ -169,8 +182,20 @@ plt.show()
 # This runs three times below, once per candidate order, with
 # identical fitting and printing logic each time -- again, repetition
 # worth wrapping in a function.
+#
+# A note on `trend="t"`: by default, statsmodels' ARIMA does NOT add a
+# drift term once d >= 1 -- the differenced series is modeled as having
+# zero unconditional mean. If the original series has a genuine
+# long-run upward (or downward) drift, as ours does (see Section 1),
+# omitting this term doesn't just cost a little accuracy -- it silently
+# removes the trend from the forecast entirely. The h-step-ahead
+# forecast from a driftless ARIMA(p,1,q) converges to the last few
+# observed values and then goes flat, because nothing in the model
+# pulls it any further. `trend="t"` adds a deterministic drift term to
+# the differenced equation, which is what lets the forecast keep
+# climbing (or falling) instead of leveling off at the last observation.
 
-def fit_and_summarize(series, order):
+def fit_and_summarize(series, order, trend="t"):
     """Fit an ARIMA model and print a formatted summary of key metrics.
 
     Parameters
@@ -180,13 +205,18 @@ def fit_and_summarize(series, order):
         ARIMA handles differencing internally via the `d` term).
     order : tuple of int
         The (p, d, q) order of the ARIMA model.
+    trend : str, default "t"
+        Passed through to statsmodels' ARIMA. "t" adds a deterministic
+        drift term to the differenced equation -- needed here because
+        the series has a visible long-run trend (Section 1) that a
+        driftless model would ignore. See the note above this function.
 
     Returns
     -------
     statsmodels ARIMAResults
         The fitted model results object.
     """
-    model = ARIMA(series, order=order)
+    model = ARIMA(series, order=order, trend=trend)
     fitted = model.fit()
 
     print(f"\n{'='*40}")
@@ -227,6 +257,10 @@ plt.show()
 # is no repetition to remove by wrapping it in a function. Left inline,
 # you can read the forecast, the plot, and the table top to bottom in
 # one pass, without jumping to a definition elsewhere in the file.
+#
+# Discussion (before running): given the drift term we just added in
+# Section 4, what do you now expect this forecast to look like,
+# compared to a driftless model? Run the cell and check.
 
 forecast_horizon = 12
 forecast_result = best_model.get_forecast(steps=forecast_horizon)
@@ -267,6 +301,101 @@ print(f"{'='*50}")
 
 # Discussion: Which model do AIC and BIC favor? Do they agree? If not,
 # which criterion would you trust more here, and why?
+
+
+# %% 8. Forecast Evaluation
+#
+# AIC and BIC (Section 7) tell us which model fits the data best --
+# but "fits the data" and "forecasts well" are not the same question.
+# AIC and BIC are computed from the same data the model was estimated
+# on. A model can fit that data closely and still forecast poorly,
+# because fitting well partly means matching noise that will never
+# repeat. This section asks a different, more direct question: how
+# far off was (or is) the forecast, in the same units as the series
+# itself?
+#
+# We look at this two ways below. Read both discussions before running
+# the cell -- the comparison between them is the point.
+#
+# (a) Out-of-sample: the honest test. We re-fit the model using only
+#     the first (n - h) observations, forecast the last h months
+#     forward, and compare that forecast to the actual observed
+#     values -- values the model never saw during estimation. This is
+#     the only way to know whether the model can forecast something,
+#     rather than just describe something it has already seen.
+#
+# (b) In-sample: a cautionary comparison, not a "backup" metric. Here
+#     we look at the ORIGINAL full-sample model from Section 4 -- the
+#     same model whose forecast is plotted in Section 6 -- and compare
+#     its one-step-ahead fitted values against the data it was
+#     estimated on. This tells us how closely the model tracks data it
+#     has already seen, which is a different question from how well it
+#     forecasts data it hasn't. We compute both so the numbers can be
+#     compared side by side.
+#
+# We use three standard error metrics, all in the original units of
+# the series (widget sales index points):
+#   - RMSE (Root Mean Squared Error): penalizes large errors more
+#     heavily than small ones, because errors are squared before
+#     averaging.
+#   - MAE (Mean Absolute Error): treats every unit of error equally,
+#     large or small -- often easier to interpret directly ("the
+#     forecast was off by about X points, on average").
+#   - MAPE (Mean Absolute Percentage Error): expresses that same
+#     average error as a percentage of the actual value, which makes
+#     it comparable across series measured in different units or
+#     scales. (MAPE is undefined if any actual value is exactly zero
+#     -- not an issue for this series, but worth knowing.)
+#
+# Discussion (before running): which of the two numbers below -- (a)
+# or (b) -- should we trust more if we actually had to act on this
+# model's forecast? Why does a model's fit to its OWN estimation data
+# not guarantee anything about its accuracy on new data?
+
+# --- (a) Out-of-sample: train/test split ---
+eval_horizon = 12
+train = series.iloc[:-eval_horizon]
+test = series.iloc[-eval_horizon:]
+
+eval_model = ARIMA(train, order=best_order, trend="t").fit()
+oos_forecast = eval_model.get_forecast(steps=eval_horizon).predicted_mean
+oos_forecast.index = test.index
+
+oos_errors = test.values - oos_forecast.values
+rmse_oos = np.sqrt(np.mean(oos_errors**2))
+mae_oos = np.mean(np.abs(oos_errors))
+mape_oos = np.mean(np.abs(oos_errors / test.values)) * 100
+
+# --- (b) In-sample: fitted vs. actual, full-sample model ---
+# best_model (Section 5) was estimated on the full series -- these are
+# its one-step-ahead fitted values, not a genuine forecast.
+in_sample = pd.concat(
+    [series, best_model.fittedvalues.rename("fitted")], axis=1
+).dropna()
+
+in_sample_errors = in_sample.iloc[:, 0].values - in_sample["fitted"].values
+rmse_in = np.sqrt(np.mean(in_sample_errors**2))
+mae_in = np.mean(np.abs(in_sample_errors))
+mape_in = np.mean(np.abs(in_sample_errors / in_sample.iloc[:, 0].values)) * 100
+
+print(f"\n{'='*72}")
+print(f"Forecast Evaluation -- ARIMA{best_order}")
+print(f"{'='*72}")
+print(f"{'':<28}{'RMSE':>12}{'MAE':>12}{'MAPE (%)':>12}")
+print(f"{'-'*72}")
+print(f"{'(a) Out-of-sample':<28}{rmse_oos:>12.3f}{mae_oos:>12.3f}{mape_oos:>12.3f}")
+print(f"{'(b) In-sample (fitted)':<28}{rmse_in:>12.3f}{mae_in:>12.3f}{mape_in:>12.3f}")
+print(f"{'='*72}")
+print(
+    "Note: (a) and (b) are not directly comparable in a strict sense --\n"
+    "different sample, different model estimation window -- but the\n"
+    "contrast is the pedagogical point: a model's error on data it has\n"
+    "already seen is not a substitute for its error on data it hasn't.\n"
+    "Chapter 5 formalizes exactly this distinction, along with how to\n"
+    "compare competing forecasts rigorously (Diebold-Mariano) rather\n"
+    "than by eyeballing error metrics like these."
+)
+print(f"{'='*72}")
 
 
 # %% Lab Complete -- Before You Leave
