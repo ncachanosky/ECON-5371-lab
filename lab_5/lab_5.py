@@ -52,8 +52,6 @@ from statsmodels.tsa.vector_ar.vecm import VECM
 from statsmodels.stats.diagnostic import acorr_ljungbox
 from statsmodels.graphics.tsaplots import plot_acf
 
-from functions import run_johansen_test
-
 pd.set_option('display.precision', 2)
 
 
@@ -101,7 +99,7 @@ CONFIG = {
 }
 
 os.chdir(CONFIG["lab_folder"])
-
+from functions import run_johansen_test
 
 # %% 1. Load the Data
 #
